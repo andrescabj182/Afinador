@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Afinador de Guitarra Pro</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-color: #1a1a1e;
+            --accent-color: #00e676;
+            --text-color: #ffffff;
+            --text-secondary: #a0a0a5;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            background-color: var(--card-color);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        h1 { margin-top: 0; font-size: 1.8rem; color: var(--text-color); }
+
+        select {
+            background-color: #2a2a30;
+            color: white;
+            border: 1px solid #444;
+            padding: 10px 15px;
+            border-radius: 10px;
+            font-size: 1rem;
+            width: 100%;
+            margin-bottom: 25px;
+            cursor: pointer;
+        }
+
+        /* UI de la Aguja del Afinador */
+        .tuner-display {
+            position: relative;
+            height: 120px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        .gauge-background {
+            position: absolute;
+            width: 100%;
+            height: 8px;
+            background: linear-gradient(to right, #ff1744 0%, #ffeb3b 35%, #00e676 50%, #ffeb3b 65%, #ff1744 100%);
+            border-radius: 4px;
+            bottom: 40px;
+        }
+
+        .needle {
+            position: absolute;
+            width: 4px;
+            height: 60px;
+            background-color: #fff;
+            bottom: 40px;
+            transform-origin: bottom center;
+            transition: transform 0.1s ease-out;
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(255,255,255,0.8);
+        }
+
+        .center-marker {
+            position: absolute;
+            width: 4px;
+            height: 16px;
+            background-color: var(--accent-color);
+            bottom: 36px;
+            z-index: 2;
+        }
+
+        .note-container {
+            font-size: 4rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+        }
+
+        .note-container.tuned {
+            color: var(--accent-color);
+            text-shadow: 0 0 20px rgba(0, 230, 118, 0.4);
+        }
+
+        .frequency {
+            font-family: monospace;
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 25px;
+            height: 20px;
+        }
+
+        /* Botones de las Cuerdas */
+        .strings-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            margin-bottom: 25px;
+        }
+
+        .string-btn {
+            background-color: #2a2a30;
+            border: 2px solid #444;
+            color: white;
+            padding: 12px 0;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .string-btn:hover { background-color: #3a3a42; border-color: #666; }
+        .string-btn.active { background-color: var(--accent-color); color: #000; border-color: var(--accent-color); }
+
+        .main-btn {
+            background-color: #2979ff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+            box-shadow: 0 5px 15px rgba(41, 121, 255, 0.3);
+        }
+
+        .main-btn:hover { background-color: #2962ff; }
+        .main-btn.listening { background-color: #ff1744; box-shadow: 0 5px 15px rgba(255, 23, 68, 0.3); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Afinador de Guitarra</h1>
+    
+    <select id="tuningSelect">
+        <option value="estandar">Estándar (E A D G B e)</option>
+        <option value="semitono">Medio tono abajo (D# G# C# F# A# d#)</option>
+        <option value="dropD">Drop D (D A D G B e)</option>
+        <option value="dadgad">DADGAD</option>
+    </select>
+
+    <div class="tuner-display">
+        <div id="noteDisplay" class="note-container">--</div>
+        <div class="gauge-background"></div>
+        <div id="centerMarker" class="center-marker"></div>
+        <div id="needle" class="needle"></div>
+    </div>
+
+    <div id="freqDisplay" class="frequency">0.0 Hz</div>
+
+    <div class="strings-grid" id="stringsGrid">
+        <!-- Generado por JS -->
+    </div>
+
+    <button id="actionBtn" class="main-btn">Iniciar Escucha Automática</button>
+</div>
+
+<script>
+    // Configuraciones de afinación e información de notas exactas
+    const tunings = {
+        estandar: [
+            { note: 'E2', freq: 82.41 }, { note: 'A2', freq: 110.00 }, { note: 'D3', freq: 146.83 },
+            { note: 'G3', freq: 196.00 }, { note: 'B3', freq: 246.94 }, { note: 'E4', freq: 329.63 }
+        ],
+        semitono: [
+            { note: 'D#2', freq: 77.78 }, { note: 'G#2', freq: 103.83 }, { note: 'C#3', freq: 138.59 },
+            { note: 'F#3', freq: 185.00 }, { note: 'A#3', freq: 233.08 }, { note: 'D#4', freq: 311.13 }
+        ],
+        dropD: [
+            { note: 'D2', freq: 73.42 }, { note: 'A2', freq: 110.00 }, { note: 'D3', freq: 146.83 },
+            { note: 'G3', freq: 196.00 }, { note: 'B3', freq: 246.94 }, { note: 'E4', freq: 329.63 }
+        ],
+        dadgad: [
+            { note: 'D2', freq: 73.42 }, { note: 'A2', freq: 110.00 }, { note: 'D3', freq: 146.83 },
+            { note: 'G3', freq: 196.00 }, { note: 'A3', freq: 220.00 }, { note: 'D4', freq: 293.66 }
+        ]
+    };
+
+    let currentTuning = 'estandar';
+    let audioCtx = null;
+    let stream = null;
+    let analyser = null;
+    let source = null;
+    let isListening = false;
+    let activeOscillator = null;
+
+    const actionBtn = document.getElementById('actionBtn');
+    const tuningSelect = document.getElementById('tuningSelect');
+    const stringsGrid = document.getElementById('stringsGrid');
+    const noteDisplay = document.getElementById('noteDisplay');
+    const freqDisplay = document.getElementById('freqDisplay');
+    const needle = document.getElementById('needle');
+
+    // Renderizar los botones de las cuerdas (de la más gorda 6ta a la más delgada 1ra)
+    function renderStrings() {
+        stringsGrid.innerHTML = '';
+        const currentNotes = tunings[currentTuning];
+        // Mostramos de 6ta a 1ra (índices del 0 al 5)
+        currentNotes.forEach((target, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'string-btn';
+            btn.innerText = target.note.replace(/\d/, ''); // Quitar el número de octava en el botón
+            btn.onclick = () => playReferenceTone(target.freq, btn);
+            stringsGrid.appendChild(btn);
+        });
+    }
+
+    tuningSelect.onchange = (e) => {
+        currentTuning = e.target.value;
+        renderStrings();
+    };
+
+    // MODO MANUAL: Reproducir tono de referencia (Onda senoidal limpia)
+    function playReferenceTone(frequency, button) {
+        if (isListening) stopMicrophone();
+        
+        if (activeOscillator) {
+            activeOscillator.stop();
+            activeOscillator = null;
+            document.querySelectorAll('.string-btn').forEach(b => b.classList.remove('active'));
+            if (button.dataset.playing === 'true') {
+                button.dataset.playing = 'false';
+                noteDisplay.innerText = '--';
+                freqDisplay.innerText = '0.0 Hz';
+                return;
+            }
+        }
+
+        document.querySelectorAll('.string-btn').forEach(b => b.dataset.playing = 'false');
+        
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.value = frequency;
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); // Volumen controlado
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 3); // Apagado gradual
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 3);
+        
+        activeOscillator = osc;
+        button.classList.add('active');
+        button.dataset.playing = 'true';
+        
+        // Actualizar UI estática del tono manual
+        noteDisplay.innerText = button.innerText;
+        noteDisplay.classList.add('tuned');
+        freqDisplay.innerText = `${frequency.toFixed(1)} Hz`;
+        needle.style.transform = `translateX(0px) rotate(0deg)`;
+
+        osc.onended = () => {
+            button.classList.remove('active');
+            button.dataset.playing = 'false';
+            noteDisplay.classList.remove('tuned');
+        };
+    }
+
+    // MODO AUTOMÁTICO: Captura de micrófono y procesamiento de pitch
+    actionBtn.onclick = async () => {
+        if (activeOscillator) {
+            activeOscillator.stop();
+            activeOscillator = null;
+            document.querySelectorAll('.string-btn').forEach(b => b.classList.remove('active'));
+        }
+
+        if (isListening) {
+            stopMicrophone();
+        } else {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true } });
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                source = audioCtx.createMediaStreamSource(stream);
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 2048;
+
+                // Filtro de paso bajo para eliminar armónicos agudos y centrarse en las fundamentales de la guitarra
+                let lowpass = audioCtx.createBiquadFilter();
+                lowpass.type = 'lowpass';
+                lowpass.frequency.value = 400; 
+
+                source.connect(lowpass);
+                lowpass.connect(analyser);
+
+                isListening = true;
+                actionBtn.innerText = "Detener Afinador";
+                actionBtn.classList.add('listening');
+                updatePitch();
+            } catch (err) {
+                alert("No se pudo acceder al micrófono. Asegúrate de dar los permisos correspondientes.");
+                console.error(err);
+            }
+        }
+    };
+
+    function stopMicrophone() {
+        isListening = false;
+        actionBtn.innerText = "Iniciar Escucha Automática";
+        actionBtn.classList.remove('listening');
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+        noteDisplay.innerText = '--';
+        noteDisplay.classList.remove('tuned');
+        freqDisplay.innerText = '0.0 Hz';
+        needle.style.transform = `translateX(0px) rotate(0deg)`;
+    }
+
+    // Algoritmo de Autocorrelación para detección de Pitch en tiempo real
+    function autoCorrelate(buffer, sampleRate) {
+        let SIZE = buffer.length;
+        let r_max = 0;
+        let max_lags = Math.floor(SIZE / 2);
+        
+        // Buscar el umbral de energía mínimo para ignorar el ruido de fondo amplio
+        let rms = 0;
+        for (let i=0; i<SIZE; i++) {
+            let val = buffer[i];
+            rms += val*val;
+        }
+        rms = Math.sqrt(rms/SIZE);
+        if (rms < 0.015) return -1; // Silencio o muy poco ruido
+
+        // Recorte de picos para limpiar la señal ruidosa
+        let r1 = 0, r2 = SIZE - 1;
+        let thres = 0.2;
+        for (let i=0; i<SIZE/2; i++) if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
+        for (let i=SIZE-1; i>SIZE/2; i--) if (Math.abs(buffer[i]) < thres) { r2 = i; break; }
+        buffer = buffer.slice(r1, r2);
+        SIZE = buffer.length;
+
+        let c = new Float32Array(SIZE);
+        for (let i=0; i<SIZE; i++) {
+            for (let j=0; j<SIZE-i; j++) {
+                c[i] = c[i] + buffer[j]*buffer[j+i];
+            }
+        }
+
+        let d=0; while (c[d]>c[d+1]) d++;
+        let maxval = -1, maxpos = -1;
+        for (let i=d; i<SIZE/2; i++) {
+            if (c[i] > maxval) {
+                maxval = c[i];
+                maxpos = i;
+            }
+        }
+        
+        let T0 = maxpos;
+        // Interpolación parabólica para precisión de décimas de Hz
+        let x1 = c[T0-1], x2 = c[T0], x3 = c[T0+1];
+        let a = (x1 + x3 - 2*x2) / 2;
+        let b = (x3 - x1) / 2;
+        if (a) T0 = T0 - b/(2*a);
+
+        return sampleRate/T0;
+    }
+
+    function updatePitch() {
+        if (!isListening) return;
+
+        let buffer = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(buffer);
+        let pitch = autoCorrelate(buffer, audioCtx.sampleRate);
+
+        // Rango de la guitarra: filtrar ruidos absurdos fuera de escala
+        if (pitch !== -1 && pitch >= 60 && pitch <= 400) {
+            freqDisplay.innerText = `${pitch.toFixed(1)} Hz`;
+
+            // Encontrar la nota objetivo más cercana de la afinación seleccionada
+            const currentNotes = tunings[currentTuning];
+            let closestNote = currentNotes[0];
+            let minDiff = Math.abs(pitch - closestNote.freq);
+
+            for (let i = 1; i < currentNotes.length; i++) {
+                let diff = Math.abs(pitch - currentNotes[i].freq);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestNote = currentNotes[i];
+                }
+            }
+
+            // Calcular desviación en hercios
+            let diffHz = pitch - closestNote.freq;
+            
+            // Mapear desviación a la rotación de la aguja (-45 grados a +45 grados)
+            // Se asume un rango de tolerancia visual de +/- 4 Hz antes de marcar muy desajustado
+            let maxRange = 5; 
+            let angle = (diffHz / maxRange) * 45;
+            if (angle > 50) angle = 50;
+            if (angle < -50) angle = -50;
+
+            noteDisplay.innerText = closestNote.note.replace(/\d/, '');
+
+            // Si está a menos de 0.5 Hz de diferencia, se considera perfectamente afinado
+            if (Math.abs(diffHz) < 0.5) {
+                noteDisplay.classList.add('tuned');
+                needle.style.transform = `translateX(0px) rotate(0deg)`;
+                needle.style.backgroundColor = 'var(--accent-color)';
+            } else {
+                noteDisplay.classList.remove('tuned');
+                needle.style.transform = `translateX(${angle * 1.5}px) rotate(${angle}deg)`;
+                needle.style.backgroundColor = '#fff';
+            }
+        }
+
+        requestAnimationFrame(updatePitch);
+    }
+
+    // Inicializar app
+    renderStrings();
+</script>
+
+</body>
+</html>
+

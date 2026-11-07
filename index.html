@@ -305,6 +305,31 @@
     color: var(--flat);
     border: 1px solid var(--flat);
   }
+  .sens-wrap {
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sens-wrap label {
+    font-size: 12px;
+    color: var(--silver);
+    display: flex;
+    justify-content: space-between;
+  }
+  .sens-wrap label span {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--brass-bright);
+  }
+  .sens-wrap input[type=range] {
+    width: 100%;
+    accent-color: var(--brass);
+  }
+  .sens-hint {
+    font-size: 11px;
+    color: var(--muted);
+  }
   .error-msg {
     font-size: 12.5px;
     color: var(--flat);
@@ -367,6 +392,12 @@
           </button>
         </div>
 
+        <div class="sens-wrap">
+          <label for="sens">Sensibilidad del micrófono <span id="sensVal">×8</span></label>
+          <input type="range" id="sens" min="1" max="30" step="1" value="8" />
+          <span class="sens-hint">Súbela si no detecta la cuerda; bájala si capta ruido.</span>
+        </div>
+
         <div class="error-msg" id="errorMsg"></div>
 
         <p class="hint">El micrófono se usa solo en tu navegador para detectar el tono; no se graba ni se envía nada.</p>
@@ -395,6 +426,19 @@ const TUNINGS = [
       { note: "G3", freq: 196.0 },
       { note: "B3", freq: 246.94 },
       { note: "E4", freq: 329.63 },
+    ],
+  },
+  {
+    id: "ebstandard",
+    label: "Estándar ½ tono abajo",
+    sub: "Eb Ab Db Gb Bb Eb",
+    strings: [
+      { note: "Eb2", freq: 77.78 },
+      { note: "Ab2", freq: 103.83 },
+      { note: "Db3", freq: 138.59 },
+      { note: "Gb3", freq: 185.0 },
+      { note: "Bb3", freq: 233.08 },
+      { note: "Eb4", freq: 311.13 },
     ],
   },
   {
@@ -433,11 +477,17 @@ function autoCorrelate(buf, sampleRate) {
   let rms = 0;
   for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
   rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.012) return -1;
+  if (rms < 0.01) return -1;
+
+  let peak = 0;
+  for (let i = 0; i < SIZE; i++) {
+    const a = Math.abs(buf[i]);
+    if (a > peak) peak = a;
+  }
 
   let r1 = 0;
   let r2 = SIZE - 1;
-  const thres = 0.2;
+  const thres = 0.2 * peak; // umbral relativo al volumen de la señal
   for (let i = 0; i < SIZE / 2; i++) {
     if (Math.abs(buf[i]) < thres) { r1 = i; break; }
   }
@@ -514,6 +564,7 @@ let audioCtx = null;
 let stream = null;
 let source = null;
 let analyser = null;
+let inputGain = null;
 let buffer = null;
 let rafId = null;
 let rotation = 0;
@@ -536,6 +587,18 @@ const micBtn = document.getElementById("micBtn");
 const micBtnLabel = document.getElementById("micBtnLabel");
 const errorMsgEl = document.getElementById("errorMsg");
 const stringsListEl = document.getElementById("stringsList");
+const sensEl = document.getElementById("sens");
+const sensValEl = document.getElementById("sensVal");
+
+sensEl.addEventListener("input", () => {
+  sensValEl.textContent = "×" + sensEl.value;
+  if (inputGain) inputGain.gain.value = Number(sensEl.value);
+  try { localStorage.setItem("afinador_sens", sensEl.value); } catch (e) {}
+});
+try {
+  const saved = localStorage.getItem("afinador_sens");
+  if (saved) { sensEl.value = saved; sensValEl.textContent = "×" + saved; }
+} catch (e) {}
 
 function currentTuning() {
   return TUNINGS.find((t) => t.id === tuningId);
@@ -735,9 +798,12 @@ async function startListening() {
     });
 
     source = ctx.createMediaStreamSource(stream);
+    inputGain = ctx.createGain();
+    inputGain.gain.value = Number(sensEl.value);
     analyser = ctx.createAnalyser();
     analyser.fftSize = 4096;
-    source.connect(analyser);
+    source.connect(inputGain);
+    inputGain.connect(analyser);
     buffer = new Float32Array(analyser.fftSize);
 
     isListening = true;
@@ -763,6 +829,7 @@ function stopListening() {
     stream = null;
   }
   if (source) { try { source.disconnect(); } catch (e) {} source = null; }
+  if (inputGain) { try { inputGain.disconnect(); } catch (e) {} inputGain = null; }
   if (analyser) { try { analyser.disconnect(); } catch (e) {} analyser = null; }
 
   isListening = false;
